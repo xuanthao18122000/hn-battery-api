@@ -1,0 +1,40 @@
+{
+  "sections": [
+    {
+      "id": "featured",
+      "name": "Sản phẩm nổi bật",
+      "type": "featured",
+      "title": "Sản phẩm nổi bật",
+      "description": "Những sản phẩm được yêu thích nhất",
+      "limit": 10,
+      "displayOrder": 1,
+      "bannerUrl": null,
+      "viewMoreUrl": "/products?featured=true",
+      "enabled": true
+    },
+    {
+      "id": "best_seller",
+      "name": "Sản phẩm bán chạy",
+      "type": "best_seller",
+      "title": "Sản phẩm bán chạy",
+      "description": "Top sản phẩm được mua nhiều nhất",
+      "limit": 8,
+      "displayOrder": 2,
+      "bannerUrl": null,
+      "viewMoreUrl": "/products?best_seller=true",
+      "enabled": true
+    },
+    {
+      "id": "new_arrivals",
+      "name": "Sản phẩm mới",
+      "type": "new_arrivals",
+      "title": "Sản phẩm mới về",
+      "description": "Những sản phẩm mới nhất",
+      "limit": 8,
+      "displayOrder": 3,
+      "bannerUrl": null,
+      "viewMoreUrl": "/products?new=true",
+      "enabled": true
+    }
+  ]
+}
