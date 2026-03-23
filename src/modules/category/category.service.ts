@@ -1019,7 +1019,8 @@ export class CategoryService {
       .where('category.parentId IS NULL')
       .andWhere('category.deleted = :deleted', { deleted: DeletedEnum.AVAILABLE })
       .andWhere('category.status = :status', { status: StatusCommonEnum.ACTIVE })
-      .orderBy('category.position', 'ASC');
+      .orderBy('category.priority', 'ASC')
+      .addOrderBy('category.position', 'ASC');
     // Apply filters nếu có
     if (query?.status !== undefined) {
       rootQueryBuilder.andWhere('category.status = :status', { status: query.status });
@@ -1055,8 +1056,8 @@ export class CategoryService {
             });
           }),
         )
-        .orderBy('category.position', 'ASC')
-        .addOrderBy('category.priority', 'ASC')
+        .orderBy('category.priority', 'ASC')
+        .addOrderBy('category.position', 'ASC')
         .addOrderBy('category.createdAt', 'DESC');
 
       // Apply type filter consistently

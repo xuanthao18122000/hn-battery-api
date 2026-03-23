@@ -67,7 +67,6 @@ export class VehicleService {
       .fAndWhereLikeString('name')
       .fAndWhere('deleted', DeletedEnum.AVAILABLE)
       .fOrderBy('priority', 'ASC')
-      .fOrderBy('createdAt', 'DESC')
       .fAddPagination()
       .getManyAndCount();
 

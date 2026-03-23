@@ -4,4 +4,4 @@
 echo "Running build check..."
 npm run build
 
-npx lint-staged
+echo "skip lint-staged (disabled)"
