@@ -577,6 +577,40 @@ export class ProductService {
   }
 
   /**
+   * @description: Tìm kiếm sản phẩm (FE – public, lightweight)
+   */
+  async searchProducts(keyword: string, limit = 10) {
+    const qb = this.productRepo
+      .createQueryBuilder('product')
+      .select([
+        'product.id',
+        'product.name',
+        'product.slug',
+        'product.price',
+        'product.salePrice',
+        'product.thumbnailUrl',
+        'product.showPrice',
+      ])
+      .where('product.deleted = :deleted', { deleted: DeletedEnum.AVAILABLE })
+      .andWhere('product.status = :status', { status: 1 });
+
+    // Tách từ khóa → build regex pattern "word1|word2|word3" match bất kỳ từ nào
+    const words = keyword
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&')); // escape regex chars
+
+    const pattern = words.join('|');
+    qb.andWhere('product.name REGEXP :pattern', { pattern });
+
+    qb.orderBy('product.priority', 'ASC')
+      .addOrderBy('product.soldCount', 'DESC')
+      .limit(limit);
+
+    return qb.getMany();
+  }
+
+  /**
    * @description: Lấy sản phẩm liên quan
    */
   async getRelatedProducts(

@@ -27,7 +27,7 @@ export class CategoryFeController {
   @Get('slug/:slug')
   @ApiOperation({ summary: 'Lấy chi tiết category theo slug (Public)' })
   async getCategoryBySlug(@Param('slug') slug: string) {
-    return await this.categoryService.findBySlug(slug);
+    return await this.categoryService.findBySlugFe(slug);
   }
 
   @Get('tree')

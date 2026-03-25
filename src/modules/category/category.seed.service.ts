@@ -11,6 +11,7 @@ export class CategorySeedService {
    */
   async seedFromMock() {
     const rows = getMockCategories().map((r) => ({
+      id: r.id,
       code: r.code,
       name: r.name,
       slug: r.slug,

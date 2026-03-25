@@ -134,50 +134,50 @@ export class CategoryService {
     const priority = opts.position ?? 0;
     const img = this.normalizeSeedMediaUrl(opts.image);
 
-    if (opts.taxonomy === 'brand') {
-      const b = await this.brandService.createIfNotExistsExactSlug({
-        name: opts.name,
-        slug: opts.slug,
-        priority,
-        logoUrl: img,
-      });
-      if (!b && img) {
-        await this.brandService.applySeedMediaIfEmpty(opts.slug, {
-          logoUrl: img,
-        });
-      }
-      return { brandCreated: !!b, vehicleCreated: false };
-    }
-    if (opts.taxonomy === 'vehicle_car') {
-      const v = await this.vehicleService.createIfNotExistsExactSlug({
-        name: opts.name,
-        slug: opts.slug,
-        type: VehicleTypeEnum.CAR,
-        priority,
-        imageUrl: img,
-      });
-      if (!v && img) {
-        await this.vehicleService.applySeedMediaIfEmpty(opts.slug, {
-          imageUrl: img,
-        });
-      }
-      return { brandCreated: false, vehicleCreated: !!v };
-    }
-    if (opts.taxonomy === 'vehicle_moto') {
-      const v = await this.vehicleService.createIfNotExistsExactSlug({
-        name: opts.name,
-        slug: opts.slug,
-        type: VehicleTypeEnum.MOTO,
-        priority,
-        imageUrl: img,
-      });
-      if (!v && img) {
-        await this.vehicleService.applySeedMediaIfEmpty(opts.slug, {
-          imageUrl: img,
-        });
-      }
-      return { brandCreated: false, vehicleCreated: !!v };
-    }
+    // if (opts.taxonomy === 'brand') {
+    //   const b = await this.brandService.createIfNotExistsExactSlug({
+    //     name: opts.name,
+    //     slug: opts.slug,
+    //     priority,
+    //     logoUrl: img,
+    //   });
+    //   if (!b && img) {
+    //     await this.brandService.applySeedMediaIfEmpty(opts.slug, {
+    //       logoUrl: img,
+    //     });
+    //   }
+    //   return { brandCreated: !!b, vehicleCreated: false };
+    // }
+    // if (opts.taxonomy === 'vehicle_car') {
+    //   const v = await this.vehicleService.createIfNotExistsExactSlug({
+    //     name: opts.name,
+    //     slug: opts.slug,
+    //     type: VehicleTypeEnum.CAR,
+    //     priority,
+    //     imageUrl: img,
+    //   });
+    //   if (!v && img) {
+    //     await this.vehicleService.applySeedMediaIfEmpty(opts.slug, {
+    //       imageUrl: img,
+    //     });
+    //   }
+    //   return { brandCreated: false, vehicleCreated: !!v };
+    // }
+    // if (opts.taxonomy === 'vehicle_moto') {
+    //   const v = await this.vehicleService.createIfNotExistsExactSlug({
+    //     name: opts.name,
+    //     slug: opts.slug,
+    //     type: VehicleTypeEnum.MOTO,
+    //     priority,
+    //     imageUrl: img,
+    //   });
+    //   if (!v && img) {
+    //     await this.vehicleService.applySeedMediaIfEmpty(opts.slug, {
+    //       imageUrl: img,
+    //     });
+    //   }
+    //   return { brandCreated: false, vehicleCreated: !!v };
+    // }
     return { brandCreated: false, vehicleCreated: false };
   }
 
@@ -203,6 +203,7 @@ export class CategoryService {
    */
   async importCategoryRows(
     rows: Array<{
+      id?: number;
       code: string;
       name: string;
       slug?: string;
@@ -213,6 +214,7 @@ export class CategoryService {
     }>,
   ) {
     const normalized: Array<{
+      id?: number;
       code: string;
       name: string;
       slug?: string;
@@ -226,6 +228,7 @@ export class CategoryService {
       const name = String(r.name ?? '').trim();
       if (!code || !name) continue;
       normalized.push({
+        id: r.id,
         code,
         name,
         slug: r.slug,
@@ -363,6 +366,7 @@ export class CategoryService {
       const thumb = this.normalizeSeedMediaUrl(r.image);
       const desc = this.normalizeOptionalSeedString(r.description);
       const entity = this.categoryRepo.create({
+        ...(r.id ? { id: r.id } : {}),
         name: r.name,
         slug,
         type,
@@ -771,6 +775,49 @@ export class CategoryService {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
+    return category;
+  }
+
+  /**
+   * FE behavior:
+   * - Prefer children categories (active + available)
+   * - If no children, return siblings (same parent) as `children`
+   */
+  async findBySlugFe(slug: string): Promise<Category> {
+    const category = await this.findBySlug(slug);
+
+    const activeChildren = (category.children ?? []).filter(
+      (c) =>
+        c.deleted === DeletedEnum.AVAILABLE &&
+        c.status === StatusCommonEnum.ACTIVE,
+    );
+    if (activeChildren.length > 0) {
+      category.children = activeChildren;
+      return category;
+    }
+
+    if (!category.parentId) {
+      category.children = [];
+      return category;
+    }
+
+    const parent = await this.categoryRepo.findOne({
+      where: {
+        id: category.parentId,
+        deleted: DeletedEnum.AVAILABLE,
+        status: StatusCommonEnum.ACTIVE,
+      },
+      relations: ['children'],
+    });
+
+    const siblings = (parent?.children ?? []).filter(
+      (c) =>
+        c.id !== category.id &&
+        c.deleted === DeletedEnum.AVAILABLE &&
+        c.status === StatusCommonEnum.ACTIVE,
+    );
+
+    category.children = siblings;
     return category;
   }
 

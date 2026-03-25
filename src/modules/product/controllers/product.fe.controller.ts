@@ -33,6 +33,19 @@ export class ProductFeController {
     });
   }
 
+  @Get('search')
+  @ApiOperation({ summary: 'Tìm kiếm sản phẩm theo keyword (Public)' })
+  @ApiQuery({ name: 'q', required: true, description: 'Từ khóa tìm kiếm' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Số lượng kết quả (mặc định 10)' })
+  async searchProducts(
+    @Query('q') q: string,
+    @Query('limit') limit?: number,
+  ) {
+    const keyword = q?.trim();
+    if (!keyword) return [];
+    return this.productService.searchProducts(keyword, limit ? Number(limit) : 10);
+  }
+
   @Post('createBulks')
   @ApiOperation({ summary: 'Tạo bulk products từ mock (Public - seeding)' })
   async createBulks(
