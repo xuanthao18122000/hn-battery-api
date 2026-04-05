@@ -111,5 +111,23 @@ export class ListProductDto extends PaginationOptionsDto {
   @IsEnum(StatusCommonEnum)
   @IsOptional()
   status?: StatusCommonEnum;
+
+  @ApiProperty({
+    description:
+      'Điện áp (CSV): mỗi giá trị OR — LOWER(product.name) LIKE %term% (vd: "12V,24V")',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  voltageTerms?: string;
+
+  @ApiProperty({
+    description:
+      'Dung lượng/Ah (CSV): mỗi giá trị OR — LOWER(product.name) LIKE %term% (vd: "60Ah,100Ah")',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  powerTerms?: string;
 }
 

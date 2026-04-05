@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -13,8 +13,13 @@ import {
 } from './dto';
 import { Category, Product, ProductCategory } from 'src/database/entities';
 import { isValueDefinedAndChanged, paginatedResponse } from 'src/helpers';
+import { createPerfLogger } from 'src/helpers/perf-debug';
 import { ErrorCode } from 'src/constants';
-import { DeletedEnum } from 'src/enums';
+import {
+  CategoryTypeEnum,
+  DeletedEnum,
+  StatusCommonEnum,
+} from 'src/enums';
 import { SlugService } from '../slug/slug.service';
 import { SLUG_TYPE_ENUM } from 'src/database/entities/slug.entity';
 
@@ -279,8 +284,6 @@ export class ProductService {
       options?.fromCategorySlug,
     );
 
-    console.log('breadcrumb', breadcrumb);
-
     return Object.assign(product, { breadcrumb });
   }
 
@@ -521,18 +524,80 @@ export class ProductService {
   }
 
   /**
-   * @description: Lấy sản phẩm theo danh mục
+   * Danh mục gốc + mọi danh mục con (theo idPath), chỉ CATEGORY sản phẩm, active.
+   */
+  private async getCategoryIdsIncludingDescendants(
+    categoryId: number,
+  ): Promise<number[]> {
+    const perf = createPerfLogger(
+      `ProductService.getCategoryIdsIncludingDescendants(${categoryId})`,
+    );
+    perf('start');
+
+    const category = await this.categoryRepo.findOne({
+      where: { id: categoryId, deleted: DeletedEnum.AVAILABLE },
+      select: ['id', 'idPath'],
+    });
+    perf('after findOne category');
+    if (!category) return [];
+
+    const pathPrefix = `${category.idPath}${category.id}/`;
+
+    const rows = await this.categoryRepo
+      .createQueryBuilder('c')
+      .select('c.id')
+      .where('c.deleted = :deleted', { deleted: DeletedEnum.AVAILABLE })
+      .andWhere('c.status = :status', { status: StatusCommonEnum.ACTIVE })
+      .andWhere('c.type = :catType', { catType: CategoryTypeEnum.CATEGORY })
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where('c.id = :categoryId', { categoryId }).orWhere(
+            'c.idPath LIKE :pathPrefix',
+            { pathPrefix: `${pathPrefix}%` },
+          );
+        }),
+      )
+      .getMany();
+
+    perf('after descendant id query');
+    return rows.map((c) => c.id);
+  }
+
+  /**
+   * @description: Lấy sản phẩm theo danh mục (gồm sản phẩm gắn ở danh mục con)
    */
   async findByCategory(
     categoryId: number,
     query: ListProductDto,
   ): Promise<any> {
+    const perf = createPerfLogger(
+      `ProductService.findByCategory(${categoryId})`,
+    );
+    perf('start');
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+
+    const categoryIds = await this.getCategoryIdsIncludingDescendants(
+      categoryId,
+    );
+    perf('after getCategoryIdsIncludingDescendants');
+
+    if (categoryIds.length === 0) {
+      perf('return empty (no category ids)');
+      return paginatedResponse([], 0, query);
+    }
+
     const queryBuilder = this.productRepo
       .createQueryBuilder('product')
+      .distinct(true)
       .leftJoin('product.productCategories', 'pc')
-      .where('pc.categoryId = :categoryId', { categoryId })
+      .where('pc.categoryId IN (:...categoryIds)', { categoryIds })
       .andWhere('product.deleted = :deleted', {
         deleted: DeletedEnum.AVAILABLE,
+      })
+      .andWhere('product.status = :activeStatus', {
+        activeStatus: StatusCommonEnum.ACTIVE,
       });
 
     if (query.batteryCapacityId != null) {
@@ -541,14 +606,86 @@ export class ProductService {
       });
     }
 
-    queryBuilder.addOrderBy('product.createdAt', 'DESC');
+    const nameQ = query.name?.trim();
+    if (nameQ) {
+      queryBuilder.andWhere('LOCATE(:nameSub, LOWER(product.name)) > 0', {
+        nameSub: nameQ.toLowerCase(),
+      });
+    }
 
-    const [products, total] = await queryBuilder
-      .skip((query.page - 1) * query.limit)
-      .take(query.limit)
-      .getManyAndCount();
+    if (query.priceFrom != null) {
+      queryBuilder.andWhere(`product.salePrice >= :priceFrom`, {
+        priceFrom: query.priceFrom,
+      });
+    }
+    if (query.priceTo != null) {
+      queryBuilder.andWhere(`product.salePrice <= :priceTo`, {
+        priceTo: query.priceTo,
+      });
+    }
+
+    const voltageTerms = this.parseCsvTerms(query.voltageTerms);
+    if (voltageTerms.length > 0) {
+      queryBuilder.andWhere(
+        new Brackets((sub) => {
+          voltageTerms.forEach((term, i) => {
+            const key = `vt${i}`;
+            const clause = `LOCATE(:${key}, LOWER(product.name)) > 0`;
+            if (i === 0) sub.where(clause, { [key]: term });
+            else sub.orWhere(clause, { [key]: term });
+          });
+        }),
+      );
+    }
+
+    const powerTerms = this.parseCsvTerms(query.powerTerms);
+    if (powerTerms.length > 0) {
+      queryBuilder.andWhere(
+        new Brackets((sub) => {
+          powerTerms.forEach((term, i) => {
+            const key = `pt${i}`;
+            const clause = `LOCATE(:${key}, LOWER(product.name)) > 0`;
+            if (i === 0) sub.where(clause, { [key]: term });
+            else sub.orWhere(clause, { [key]: term });
+          });
+        }),
+      );
+    }
+
+    const sort = query.sortBy;
+    if (sort === 'price-asc') {
+      queryBuilder
+        .orderBy('product.salePrice', 'ASC')
+        .addOrderBy('product.id', 'ASC');
+    } else if (sort === 'price-desc') {
+      queryBuilder
+        .orderBy('product.salePrice', 'DESC')
+        .addOrderBy('product.id', 'DESC');
+    } else if (sort === 'name-asc') {
+      queryBuilder.orderBy('product.name', 'ASC');
+    } else if (sort === 'name-desc') {
+      queryBuilder.orderBy('product.name', 'DESC');
+    } else {
+      queryBuilder.orderBy('product.createdAt', 'DESC');
+    }
+
+    if (query.getFull !== true) {
+      queryBuilder.skip((page - 1) * limit).take(limit);
+    }
+
+    perf('before getManyAndCount');
+    const [products, total] = await queryBuilder.getManyAndCount();
+    perf(`after getManyAndCount (rows=${products.length}, total=${total})`);
 
     return paginatedResponse(products, total, query);
+  }
+
+  private parseCsvTerms(raw?: string): string[] {
+    if (!raw?.trim()) return [];
+    return raw
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
   }
 
   /**

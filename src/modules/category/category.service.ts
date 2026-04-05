@@ -19,6 +19,7 @@ import { BrandService } from 'src/modules/brand/brand.service';
 import { VehicleService } from 'src/modules/vehicle/vehicle.service';
 import { SLUG_TYPE_ENUM } from 'src/database/entities/slug.entity';
 import { CacheService } from 'src/modules/cache';
+import { createPerfLogger } from 'src/helpers/perf-debug';
 import * as ExcelJS from 'exceljs';
 
 const CATEGORY_TREE_CACHE_KEY_PREFIX = 'fe:categories:tree';
@@ -779,45 +780,68 @@ export class CategoryService {
   }
 
   /**
-   * FE behavior:
-   * - Prefer children categories (active + available)
-   * - If no children, return siblings (same parent) as `children`
+   * FE: chi tiết danh mục + children/siblings.
+   * Không dùng relations `children`/`parent` (tránh load longtext description của hàng loạt con → chậm >1s).
    */
   async findBySlugFe(slug: string): Promise<Category> {
-    const category = await this.findBySlug(slug);
+    const perf = createPerfLogger(`CategoryService.findBySlugFe(${slug})`);
+    perf('start');
 
-    const activeChildren = (category.children ?? []).filter(
-      (c) =>
-        c.deleted === DeletedEnum.AVAILABLE &&
-        c.status === StatusCommonEnum.ACTIVE,
-    );
+    const category = await this.categoryRepo.findOne({
+      where: { slug, deleted: DeletedEnum.AVAILABLE },
+    });
+    perf('after findOne by slug');
+
+    if (!category) {
+      throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
+    }
+
+    const childColumns: (keyof Category)[] = [
+      'id',
+      'name',
+      'slug',
+      'thumbnailUrl',
+      'iconUrl',
+      'position',
+      'priority',
+      'parentId',
+      'level',
+      'type',
+    ];
+
+    const listActiveByParent = (parentId: number) =>
+      this.categoryRepo.find({
+        where: {
+          parentId,
+          deleted: DeletedEnum.AVAILABLE,
+          status: StatusCommonEnum.ACTIVE,
+        },
+        select: childColumns as never,
+        order: { position: 'ASC', priority: 'ASC' },
+      });
+
+    let activeChildren = await listActiveByParent(category.id);
+    perf('after listActiveByParent(children)');
+
     if (activeChildren.length > 0) {
       category.children = activeChildren;
+      perf('return: has active children');
       return category;
     }
 
     if (!category.parentId) {
       category.children = [];
+      perf('return: no parent, empty children');
       return category;
     }
 
-    const parent = await this.categoryRepo.findOne({
-      where: {
-        id: category.parentId,
-        deleted: DeletedEnum.AVAILABLE,
-        status: StatusCommonEnum.ACTIVE,
-      },
-      relations: ['children'],
-    });
-
-    const siblings = (parent?.children ?? []).filter(
-      (c) =>
-        c.id !== category.id &&
-        c.deleted === DeletedEnum.AVAILABLE &&
-        c.status === StatusCommonEnum.ACTIVE,
+    const siblings = (await listActiveByParent(category.parentId)).filter(
+      (c) => c.id !== category.id,
     );
+    perf('after listActiveByParent(siblings)');
 
     category.children = siblings;
+    perf('return: siblings as children');
     return category;
   }
 
@@ -1143,11 +1167,23 @@ export class CategoryService {
    * @description: Lấy danh sách sản phẩm theo category slug (Public)
    */
   async getProductsByCategorySlug(slug: string, query: ListProductDto) {
-    // Tìm category theo slug
-    const category = await this.findBySlug(slug);
-    
-    // Lấy sản phẩm theo category ID
-    return await this.productService.findByCategory(category.id, query);
+    const perf = createPerfLogger(
+      `CategoryService.getProductsByCategorySlug(${slug})`,
+    );
+    perf('start');
+
+    const category = await this.categoryRepo.findOne({
+      where: { slug, deleted: DeletedEnum.AVAILABLE },
+      select: ['id'],
+    });
+    perf('after findOne category id');
+
+    if (!category) {
+      throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
+    }
+    const out = await this.productService.findByCategory(category.id, query);
+    perf('after productService.findByCategory');
+    return out;
   }
 }
 
