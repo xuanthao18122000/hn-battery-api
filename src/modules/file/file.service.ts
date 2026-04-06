@@ -128,8 +128,8 @@ export class FileService {
             method: "post" as const,
             url: uploadImageApi,
             headers: {
+                // Chỉ dùng getHeaders() — không set Content-Type thuần: sẽ mất boundary và hỏng multipart
                 ...formData.getHeaders(),
-                "Content-Type": "multipart/form-data",
                 "auth-uuid": cdnAuthUuid,
             },
             data: formData,
@@ -255,6 +255,7 @@ export class FileService {
      * @description: Xử lý lỗi từ axios request
      */
     private handleAxiosError(error: unknown, defaultMessage: string): never {
+        console.log(error);
         if (axios.isAxiosError(error)) {
             const axiosError = error as AxiosError<{ message?: string; data?: unknown }>;
 

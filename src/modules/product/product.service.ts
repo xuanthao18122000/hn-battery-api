@@ -22,6 +22,7 @@ import {
 } from 'src/enums';
 import { SlugService } from '../slug/slug.service';
 import { SLUG_TYPE_ENUM } from 'src/database/entities/slug.entity';
+import { CDNConfig } from 'src/configs/cdn.config';
 
 @Injectable()
 export class ProductService {
@@ -150,6 +151,17 @@ export class ProductService {
     if (!exists) {
       await this.slugService.create({ type: SLUG_TYPE_ENUM.PRODUCT, slug });
     }
+  }
+
+  /** Lưu thumbnailUrl dạng full URL (CDN_URL + path) khi client gửi path tương đối. */
+  private normalizeThumbnailUrlForDb(
+    url: string | undefined | null,
+  ): string | undefined | null {
+    if (url === undefined || url === null) return url;
+    if (typeof url !== 'string') return url;
+    const t = url.trim();
+    if (!t) return t;
+    return CDNConfig.toPublicAssetUrl(t);
   }
 
   private async syncProductSlugAfterUpdate(oldSlug: string, newSlug: string) {
@@ -353,6 +365,12 @@ export class ProductService {
 
     const { categoryIds, ...productData } = createProductDto;
 
+    if (productData.thumbnailUrl !== undefined) {
+      productData.thumbnailUrl = this.normalizeThumbnailUrlForDb(
+        productData.thumbnailUrl,
+      ) as string | undefined;
+    }
+
     // Tạo sản phẩm
     const product = this.productRepo.create(productData);
     const savedProduct = await this.productRepo.save(product);
@@ -417,6 +435,12 @@ export class ProductService {
     }
 
     const { categoryIds, ...productData } = updateProductDto;
+
+    if (productData.thumbnailUrl !== undefined) {
+      productData.thumbnailUrl = this.normalizeThumbnailUrlForDb(
+        productData.thumbnailUrl,
+      ) as string | undefined;
+    }
 
     // Cập nhật các trường
     const allowedFields: (keyof typeof productData)[] = [
@@ -688,6 +712,11 @@ export class ProductService {
       .filter(Boolean);
   }
 
+  /** Bỏ ký tự đặc biệt của LIKE (% _ \\) để tránh wildcard injection. */
+  private sanitizeLikeFragment(s: string): string {
+    return s.replace(/[%_\\]/g, '');
+  }
+
   /**
    * @description: Tăng số lượng đã bán
    */
@@ -714,9 +743,21 @@ export class ProductService {
   }
 
   /**
-   * @description: Tìm kiếm sản phẩm (FE – public, lightweight)
+   * @description: Tìm kiếm sản phẩm (FE – public, lightweight).
+   * Dùng LIKE: mọi từ trong query phải có trong tên (AND), tránh REGEXP OR → kết quả loãng.
+   * Ưu tiên dòng có khớp cả cụm từ liên tiếp (gần đúng theo cụm, không cần regex).
    */
   async searchProducts(keyword: string, limit = 10) {
+    const normalized = keyword.replace(/\s+/g, ' ').trim();
+    const words = normalized
+      .split(' ')
+      .map((w) => this.sanitizeLikeFragment(w))
+      .filter(Boolean);
+
+    if (words.length === 0) {
+      return [];
+    }
+
     const qb = this.productRepo
       .createQueryBuilder('product')
       .select([
@@ -731,16 +772,19 @@ export class ProductService {
       .where('product.deleted = :deleted', { deleted: DeletedEnum.AVAILABLE })
       .andWhere('product.status = :status', { status: 1 });
 
-    // Tách từ khóa → build regex pattern "word1|word2|word3" match bất kỳ từ nào
-    const words = keyword
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&')); // escape regex chars
+    words.forEach((w, i) => {
+      qb.andWhere(`product.name LIKE :searchWord${i}`, {
+        [`searchWord${i}`]: `%${w}%`,
+      });
+    });
 
-    const pattern = words.join('|');
-    qb.andWhere('product.name REGEXP :pattern', { pattern });
-
-    qb.orderBy('product.priority', 'ASC')
+    const phraseParam = `%${words.join(' ')}%`;
+    qb.orderBy(
+      'CASE WHEN product.name LIKE :searchPhrase THEN 0 ELSE 1 END',
+      'ASC',
+    )
+      .setParameter('searchPhrase', phraseParam)
+      .addOrderBy('product.priority', 'ASC')
       .addOrderBy('product.soldCount', 'DESC')
       .limit(limit);
 

@@ -9,7 +9,8 @@ export class CDNConfig {
      * @description: API paths của CDN server
      */
     private static readonly API_PATHS = {
-        UPLOAD: "/uploads",
+        // Trailing slash: một số origin/nginx chỉ khớp đúng /uploads/
+        UPLOAD: "/uploads/",
         REMOVE_FILE: "/remove-file",
         REMOVE_FILES: "/remove-files",
     } as const;
@@ -76,5 +77,29 @@ export class CDNConfig {
             uploadUrl: this.getUploadUrl(),
             authUuid: this.getAuthUuid(),
         };
+    }
+
+    /**
+     * URL public (pull zone) để ghép vào path file — khác CDN_UPLOAD_URL (origin upload).
+     */
+    static getPublicCdnBaseUrl(): string | null {
+        const url = getEnv<string>("CDN_URL");
+        if (!url?.trim()) return null;
+        return url.trim().replace(/\/+$/, "");
+    }
+
+    /**
+     * Path từ API upload (vd: files/products/...) → full URL CDN.
+     * Đã là http(s) hoặc // thì giữ nguyên.
+     */
+    static toPublicAssetUrl(pathOrUrl: string): string {
+        const s = pathOrUrl.trim();
+        if (!s || /^https?:\/\//i.test(s) || s.startsWith("//")) {
+            return s;
+        }
+        const base = this.getPublicCdnBaseUrl();
+        if (!base) return s;
+        const rel = s.replace(/^\/+/, "");
+        return `${base}/${rel}`;
     }
 }
