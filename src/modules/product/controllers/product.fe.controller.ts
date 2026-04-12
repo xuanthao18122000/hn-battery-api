@@ -53,4 +53,24 @@ export class ProductFeController {
   ) {
     return await this.productSeedService.createBulksFromMock(limit);
   }
+
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Lấy chi tiết product theo id (Public) + breadcrumb. Query fromCategory = slug danh mục nguồn.',
+  })
+  @ApiQuery({
+    name: 'fromCategory',
+    required: false,
+    description:
+      'Slug danh mục nguồn (khi user click từ trang danh mục) để breadcrumb đúng nhánh',
+  })
+  async getProductById(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('fromCategory') fromCategory?: string,
+  ) {
+    return await this.productService.findByIdForFe(id, {
+      fromCategorySlug: fromCategory,
+    });
+  }
 }

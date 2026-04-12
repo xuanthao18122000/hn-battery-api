@@ -9,6 +9,7 @@ import {
 export enum SLUG_TYPE_ENUM {
   PRODUCT = 1,
   CATEGORY = 2,
+  POST = 3,
 }
 
 export type slugType = SLUG_TYPE_ENUM;
@@ -32,6 +33,13 @@ export class Slug {
     comment: 'slug của tất cả item',
   })
   slug: string;
+
+  @Column({
+    type: 'int',
+    nullable: true,
+    comment: 'ID của entity tương ứng (product/category/post)',
+  })
+  entityId: number | null;
 
   @UpdateDateColumn()
   updatedAt: Date;

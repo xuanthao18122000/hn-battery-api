@@ -6,7 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateSlugDto, UpdateSlugDto, ListSlugDto } from './dto';
-import { Slug } from 'src/database/entities';
+import { Slug, Product, Category, Post } from 'src/database/entities';
+import { SLUG_TYPE_ENUM } from 'src/database/entities/slug.entity';
 import { paginatedResponse } from 'src/helpers';
 import { ErrorCode } from 'src/constants';
 
@@ -15,6 +16,12 @@ export class SlugService {
   constructor(
     @InjectRepository(Slug)
     private readonly slugRepo: Repository<Slug>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
+    @InjectRepository(Category)
+    private readonly categoryRepo: Repository<Category>,
+    @InjectRepository(Post)
+    private readonly postRepo: Repository<Post>,
   ) {}
 
   /**
@@ -95,7 +102,11 @@ export class SlugService {
       throw new BadRequestException('Slug đã tồn tại');
     }
 
-    const slug = this.slugRepo.create(createSlugDto);
+    const slug = this.slugRepo.create({
+      type: createSlugDto.type,
+      slug: createSlugDto.slug,
+      entityId: createSlugDto.entityId ?? null,
+    });
     return await this.slugRepo.save(slug);
   }
 
@@ -119,7 +130,78 @@ export class SlugService {
       slug.type = updateSlugDto.type;
     }
 
+    // Cập nhật entityId nếu có
+    if (updateSlugDto.entityId !== undefined) {
+      slug.entityId = updateSlugDto.entityId;
+    }
+
     return await this.slugRepo.save(slug);
+  }
+
+  /**
+   * @description: Backfill entityId cho toàn bộ slug table dựa trên slug string
+   *   match với bảng product / category / post tương ứng với type.
+   */
+  async backfillEntityIds(): Promise<{
+    totalScanned: number;
+    productsUpdated: number;
+    categoriesUpdated: number;
+    postsUpdated: number;
+    notMatched: { id: number; type: number; slug: string }[];
+  }> {
+    const slugs = await this.slugRepo.find();
+
+    const result = {
+      totalScanned: slugs.length,
+      productsUpdated: 0,
+      categoriesUpdated: 0,
+      postsUpdated: 0,
+      notMatched: [] as { id: number; type: number; slug: string }[],
+    };
+
+    for (const row of slugs) {
+      let entityId: number | null = null;
+
+      if (row.type === SLUG_TYPE_ENUM.PRODUCT) {
+        const product = await this.productRepo.findOne({
+          where: { slug: row.slug },
+          select: ['id'],
+        });
+        entityId = product?.id ?? null;
+      } else if (row.type === SLUG_TYPE_ENUM.CATEGORY) {
+        const category = await this.categoryRepo.findOne({
+          where: { slug: row.slug },
+          select: ['id'],
+        });
+        entityId = category?.id ?? null;
+      } else if (row.type === SLUG_TYPE_ENUM.POST) {
+        const post = await this.postRepo.findOne({
+          where: { slug: row.slug },
+          select: ['id'],
+        });
+        entityId = post?.id ?? null;
+      }
+
+      if (entityId == null) {
+        result.notMatched.push({
+          id: row.id,
+          type: row.type,
+          slug: row.slug,
+        });
+        continue;
+      }
+
+      if (row.entityId !== entityId) {
+        row.entityId = entityId;
+        await this.slugRepo.save(row);
+      }
+
+      if (row.type === SLUG_TYPE_ENUM.PRODUCT) result.productsUpdated++;
+      else if (row.type === SLUG_TYPE_ENUM.CATEGORY) result.categoriesUpdated++;
+      else if (row.type === SLUG_TYPE_ENUM.POST) result.postsUpdated++;
+    }
+
+    return result;
   }
 
   /**

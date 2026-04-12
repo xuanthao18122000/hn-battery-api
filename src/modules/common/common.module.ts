@@ -1,14 +1,13 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { ResolveController } from './controllers/resolve.controller';
-import { CategoryModule } from '../category/category.module';
-import { ProductModule } from '../product/product.module';
 import { SlugModule } from '../slug/slug.module';
+import { Product, Category, Post } from 'src/database/entities';
 
 @Module({
   imports: [
-    forwardRef(() => CategoryModule),
-    forwardRef(() => ProductModule),
     SlugModule,
+    TypeOrmModule.forFeature([Product, Category, Post]),
   ],
   controllers: [ResolveController],
 })

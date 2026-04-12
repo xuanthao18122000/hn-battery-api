@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, MaxLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  MaxLength,
+  IsInt,
+} from 'class-validator';
 import { SLUG_TYPE_ENUM } from 'src/database/entities/slug.entity';
 
 export class UpdateSlugDto {
@@ -22,4 +28,13 @@ export class UpdateSlugDto {
   @IsString()
   @MaxLength(255)
   slug?: string;
+
+  @ApiProperty({
+    example: 1,
+    description: 'ID của entity tương ứng (product/category/post)',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  entityId?: number;
 }

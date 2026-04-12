@@ -145,11 +145,15 @@ export class ProductService {
     };
   }
 
-  private async syncProductSlugAfterCreate(slug: string) {
+  private async syncProductSlugAfterCreate(slug: string, entityId: number) {
     const exists = await this.slugService.checkSlugExists(slug);
 
     if (!exists) {
-      await this.slugService.create({ type: SLUG_TYPE_ENUM.PRODUCT, slug });
+      await this.slugService.create({
+        type: SLUG_TYPE_ENUM.PRODUCT,
+        slug,
+        entityId,
+      });
     }
   }
 
@@ -164,7 +168,11 @@ export class ProductService {
     return CDNConfig.toPublicAssetUrl(t);
   }
 
-  private async syncProductSlugAfterUpdate(oldSlug: string, newSlug: string) {
+  private async syncProductSlugAfterUpdate(
+    oldSlug: string,
+    newSlug: string,
+    entityId: number,
+  ) {
     if (oldSlug === newSlug) return;
 
     // Update existing slug row (by old slug) if present; otherwise create it
@@ -173,10 +181,15 @@ export class ProductService {
       await this.slugService.update(existing.id, {
         type: SLUG_TYPE_ENUM.PRODUCT,
         slug: newSlug,
+        entityId,
       });
     } catch (err) {
       // old slug row not found => create new
-      await this.slugService.create({ type: SLUG_TYPE_ENUM.PRODUCT, slug: newSlug });
+      await this.slugService.create({
+        type: SLUG_TYPE_ENUM.PRODUCT,
+        slug: newSlug,
+        entityId,
+      });
     }
   }
 
@@ -289,11 +302,37 @@ export class ProductService {
       throw new NotFoundException(ErrorCode.PRODUCT_NOT_FOUND);
     }
 
+    return this.buildProductDetail(product, options?.fromCategorySlug);
+  }
+
+  /**
+   * @description: Lấy chi tiết sản phẩm theo id + breadcrumb (cho FE).
+   */
+  async findByIdForFe(
+    id: number,
+    options?: { fromCategorySlug?: string | null },
+  ): Promise<Product & { breadcrumb: ProductBreadcrumbDto }> {
+    const product = await this.productRepo.findOne({
+      where: { id, deleted: DeletedEnum.AVAILABLE },
+      relations: ['productCategories', 'productCategories.category'],
+    });
+
+    if (!product) {
+      throw new NotFoundException(ErrorCode.PRODUCT_NOT_FOUND);
+    }
+
+    return this.buildProductDetail(product, options?.fromCategorySlug);
+  }
+
+  private async buildProductDetail(
+    product: Product,
+    fromCategorySlug?: string | null,
+  ): Promise<Product & { breadcrumb: ProductBreadcrumbDto }> {
     this.increaseViewCount(product.id);
 
     const breadcrumb = await this.buildProductBreadcrumb(
       product,
-      options?.fromCategorySlug,
+      fromCategorySlug,
     );
 
     return Object.assign(product, { breadcrumb });
@@ -375,7 +414,7 @@ export class ProductService {
     const product = this.productRepo.create(productData);
     const savedProduct = await this.productRepo.save(product);
 
-    await this.syncProductSlugAfterCreate(savedProduct.slug);
+    await this.syncProductSlugAfterCreate(savedProduct.slug, savedProduct.id);
 
     // Thêm vào danh mục
     if (categoryIds && categoryIds.length > 0) {
@@ -492,7 +531,11 @@ export class ProductService {
     await this.productRepo.save(product);
 
     if (updateProductDto.slug && updateProductDto.slug !== oldSlug) {
-      await this.syncProductSlugAfterUpdate(oldSlug, updateProductDto.slug);
+      await this.syncProductSlugAfterUpdate(
+        oldSlug,
+        updateProductDto.slug,
+        product.id,
+      );
     }
 
     // Cập nhật danh mục nếu có

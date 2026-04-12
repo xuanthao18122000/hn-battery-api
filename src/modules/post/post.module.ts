@@ -3,14 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PostController } from './post.controller';
 import { PostFeController } from './controllers/post.fe.controller';
 import { PostService } from './post.service';
+import { PostSeedService } from './post.seed.service';
 import { Post } from 'src/database/entities';
 import { SlugModule } from '../slug/slug.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Post]), SlugModule],
   controllers: [PostController, PostFeController],
-  providers: [PostService],
-  exports: [PostService],
+  providers: [PostService, PostSeedService],
+  exports: [PostService, PostSeedService],
 })
 export class PostModule {}
 

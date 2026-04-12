@@ -19,12 +19,6 @@ export enum VehicleTypeEnum {
   CAR = 2,
 }
 
-/** Loại post: 1 = Bài viết, 2 = Dịch vụ */
-export enum PostTypeEnum {
-  POST = 1,
-  SERVICE = 2,
-}
-
 /** Loại category: Danh mục (sản phẩm) hoặc Bài viết */
 export enum CategoryTypeEnum {
   CATEGORY = 1,

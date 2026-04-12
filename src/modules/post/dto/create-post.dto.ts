@@ -8,7 +8,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { StatusCommonEnum, PostTypeEnum } from 'src/enums';
+import { StatusCommonEnum } from 'src/enums';
 
 export class CreatePostDto {
   @ApiProperty({

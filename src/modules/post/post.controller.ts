@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   ParseIntPipe,
@@ -56,6 +57,12 @@ export class PostController {
     @CurrentUser() user: User,
   ) {
     return await this.postService.update(id, updatePostDto, user?.id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Xoá bài viết (xoá hẳn)' })
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    return await this.postService.hardDelete(id);
   }
 }
 

@@ -49,14 +49,22 @@ export class CategoryService {
     private readonly vehicleService: VehicleService,
   ) {}
 
-  private async syncCategorySlugAfterCreate(slug: string) {
+  private async syncCategorySlugAfterCreate(slug: string, entityId: number) {
     const exists = await this.slugService.checkSlugExists(slug);
     if (!exists) {
-      await this.slugService.create({ type: SLUG_TYPE_ENUM.CATEGORY, slug });
+      await this.slugService.create({
+        type: SLUG_TYPE_ENUM.CATEGORY,
+        slug,
+        entityId,
+      });
     }
   }
 
-  private async syncCategorySlugAfterUpdate(oldSlug: string, newSlug: string) {
+  private async syncCategorySlugAfterUpdate(
+    oldSlug: string,
+    newSlug: string,
+    entityId: number,
+  ) {
     if (oldSlug === newSlug) return;
 
     try {
@@ -64,9 +72,14 @@ export class CategoryService {
       await this.slugService.update(existing.id, {
         type: SLUG_TYPE_ENUM.CATEGORY,
         slug: newSlug,
+        entityId,
       });
     } catch (err) {
-      await this.slugService.create({ type: SLUG_TYPE_ENUM.CATEGORY, slug: newSlug });
+      await this.slugService.create({
+        type: SLUG_TYPE_ENUM.CATEGORY,
+        slug: newSlug,
+        entityId,
+      });
     }
   }
 
@@ -379,7 +392,7 @@ export class CategoryService {
         description: desc,
       });
       const saved = await this.categoryRepo.save(entity);
-      await this.syncCategorySlugAfterCreate(saved.slug);
+      await this.syncCategorySlugAfterCreate(saved.slug, saved.id);
 
       existingSlugSet.add(saved.slug);
       slugToId.set(saved.slug, saved.id);
@@ -543,7 +556,7 @@ export class CategoryService {
             position: i,
           });
           const saved = await this.categoryRepo.save(entity);
-          await this.syncCategorySlugAfterCreate(saved.slug);
+          await this.syncCategorySlugAfterCreate(saved.slug, saved.id);
 
           existingSlugSet.add(saved.slug);
           slugToId.set(saved.slug, saved.id);
@@ -784,18 +797,29 @@ export class CategoryService {
    * Không dùng relations `children`/`parent` (tránh load longtext description của hàng loạt con → chậm >1s).
    */
   async findBySlugFe(slug: string): Promise<Category> {
-    const perf = createPerfLogger(`CategoryService.findBySlugFe(${slug})`);
-    perf('start');
-
     const category = await this.categoryRepo.findOne({
       where: { slug, deleted: DeletedEnum.AVAILABLE },
     });
-    perf('after findOne by slug');
-
     if (!category) {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
+    return this.attachFeChildren(category);
+  }
 
+  /**
+   * FE: chi tiết danh mục theo ID + children/siblings.
+   */
+  async findByIdFe(id: number): Promise<Category> {
+    const category = await this.categoryRepo.findOne({
+      where: { id, deleted: DeletedEnum.AVAILABLE },
+    });
+    if (!category) {
+      throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
+    }
+    return this.attachFeChildren(category);
+  }
+
+  private async attachFeChildren(category: Category): Promise<Category> {
     const childColumns: (keyof Category)[] = [
       'id',
       'name',
@@ -820,28 +844,21 @@ export class CategoryService {
         order: { position: 'ASC', priority: 'ASC' },
       });
 
-    let activeChildren = await listActiveByParent(category.id);
-    perf('after listActiveByParent(children)');
-
+    const activeChildren = await listActiveByParent(category.id);
     if (activeChildren.length > 0) {
       category.children = activeChildren;
-      perf('return: has active children');
       return category;
     }
 
     if (!category.parentId) {
       category.children = [];
-      perf('return: no parent, empty children');
       return category;
     }
 
     const siblings = (await listActiveByParent(category.parentId)).filter(
       (c) => c.id !== category.id,
     );
-    perf('after listActiveByParent(siblings)');
-
     category.children = siblings;
-    perf('return: siblings as children');
     return category;
   }
 
@@ -918,7 +935,7 @@ export class CategoryService {
     const saved = await this.categoryRepo.save(category);
 
     // Insert slug row (type CATEGORY)
-    await this.syncCategorySlugAfterCreate(saved.slug);
+    await this.syncCategorySlugAfterCreate(saved.slug, saved.id);
 
     return saved;
   }
@@ -1019,7 +1036,11 @@ export class CategoryService {
 
     // Sync slug table if slug changed
     if (updateCategoryDto.slug && updateCategoryDto.slug !== oldSlug) {
-      await this.syncCategorySlugAfterUpdate(oldSlug, updateCategoryDto.slug);
+      await this.syncCategorySlugAfterUpdate(
+        oldSlug,
+        updateCategoryDto.slug,
+        saved.id,
+      );
     }
 
     return saved;

@@ -43,6 +43,15 @@ export class SlugCmsController {
     return await this.slugService.create(createSlugDto);
   }
 
+  @Post('backfill-entity-ids')
+  @ApiOperation({
+    summary:
+      'Backfill entityId cho toàn bộ slug (match theo slug với product/category/post)',
+  })
+  async backfillEntityIds() {
+    return await this.slugService.backfillEntityIds();
+  }
+
   @Put(':id')
   @ApiOperation({ summary: 'Cập nhật slug' })
   async update(

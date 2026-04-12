@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { StatusCommonEnum, DeletedEnum, PostTypeEnum } from '../../enums';
+import { StatusCommonEnum, DeletedEnum } from '../../enums';
 import { User } from './user.entity';
 import { Category } from './category.entity';
 
