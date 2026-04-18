@@ -116,7 +116,7 @@ export class FileService {
         }
 
         formData.append("object", data.object);
-        formData.append("object_id", data.object_id);
+        formData.append("object_id", data.object_id ?? "");
 
         if (data.object_type) {
             formData.append("object_type", data.object_type);

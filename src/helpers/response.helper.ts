@@ -16,11 +16,13 @@ export const paginatedResponse = <T>(
     return { data, total };
   }
 
+  const limit = Number(query?.limit);
   return {
     data,
     total,
     page: Number(query?.page),
-    limit: Number(query?.limit),
+    limit,
+    totalPages: limit > 0 ? Math.ceil(total / limit) : 1,
   };
 };
 

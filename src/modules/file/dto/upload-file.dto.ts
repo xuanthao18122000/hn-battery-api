@@ -6,9 +6,10 @@ export class UploadFileDto {
     @IsString()
     object: string;
 
-    @ApiProperty({ description: "Object ID", example: "123" })
+    @ApiProperty({ description: "Object ID", example: "123", required: false })
+    @IsOptional()
     @IsString()
-    object_id: string;
+    object_id?: string;
 
     @ApiProperty({ description: "Object type", example: "image", required: false })
     @IsOptional()

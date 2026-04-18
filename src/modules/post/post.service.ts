@@ -197,7 +197,12 @@ export class PostService {
     updatePostDto: UpdatePostDto,
     userId?: number,
   ): Promise<Post> {
-    const post = await this.findOne(id);
+    const post = await this.postRepo.findOne({
+      where: { id, deleted: DeletedEnum.AVAILABLE },
+    });
+    if (!post) {
+      throw new NotFoundException(ErrorCode.NOT_FOUND);
+    }
     const oldSlug = post.slug;
 
     if (updatePostDto.slug && updatePostDto.slug !== post.slug) {
