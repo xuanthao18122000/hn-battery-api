@@ -7,6 +7,7 @@ import { paginatedResponse } from 'src/helpers';
 import { ErrorCode } from 'src/constants';
 import { OrderStatusEnum } from 'src/database/entities/order.entity';
 import { TelegramService } from '../telegram/telegram.service';
+import { CustomerService } from '../customer/customer.service';
 
 @Injectable()
 export class OrderService {
@@ -16,6 +17,7 @@ export class OrderService {
     @InjectRepository(OrderItem)
     private readonly orderItemRepo: Repository<OrderItem>,
     private readonly telegramService: TelegramService,
+    private readonly customerService: CustomerService,
   ) {}
 
   async findAll(query: ListOrderDto) {
@@ -23,7 +25,6 @@ export class OrderService {
       .fCreateFilterBuilder('order', query)
       .select([
         'order.id',
-        'order.code',
         'order.customerName',
         'order.phone',
         'order.email',
@@ -56,6 +57,51 @@ export class OrderService {
     return paginatedResponse(orders, total, query);
   }
 
+  /**
+   * Thống kê tổng hợp đơn hàng — dùng cho card stats trang admin (không phụ thuộc phân trang).
+   */
+  async getStats() {
+    const qb = this.orderRepo.createQueryBuilder('order');
+
+    const [total, statusRows, revenueRow] = await Promise.all([
+      qb.getCount(),
+      this.orderRepo
+        .createQueryBuilder('order')
+        .select('order.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('order.status')
+        .getRawMany<{ status: string; count: string }>(),
+      this.orderRepo
+        .createQueryBuilder('order')
+        .select('COALESCE(SUM(order.totalAmount), 0)', 'revenue')
+        .where('order.status = :status', {
+          status: OrderStatusEnum.COMPLETED,
+        })
+        .getRawOne<{ revenue: string }>(),
+    ]);
+
+    const byStatus: Record<number, number> = {
+      [OrderStatusEnum.NEW]: 0,
+      [OrderStatusEnum.CONFIRMED]: 0,
+      [OrderStatusEnum.SHIPPING]: 0,
+      [OrderStatusEnum.COMPLETED]: 0,
+      [OrderStatusEnum.CANCELLED]: 0,
+    };
+    for (const row of statusRows) {
+      byStatus[Number(row.status)] = Number(row.count);
+    }
+
+    return {
+      total,
+      new: byStatus[OrderStatusEnum.NEW],
+      confirmed: byStatus[OrderStatusEnum.CONFIRMED],
+      shipping: byStatus[OrderStatusEnum.SHIPPING],
+      completed: byStatus[OrderStatusEnum.COMPLETED],
+      cancelled: byStatus[OrderStatusEnum.CANCELLED],
+      revenue: Number(revenueRow?.revenue ?? 0),
+    };
+  }
+
   async findOne(id: number): Promise<Order> {
     const order = await this.orderRepo.findOne({
       where: { id },
@@ -75,14 +121,24 @@ export class OrderService {
         (sum, item) => sum + item.unitPrice * item.quantity,
         0,
       ) ?? 0;
+    const finalAmount = createDto.totalAmount || totalAmountFromItems;
+
+    // Tìm hoặc tạo customer theo phone — vẫn giữ snapshot tên/phone/... trên order
+    const customer = await this.customerService.findOrCreateByPhone({
+      name: createDto.customerName,
+      phone: createDto.phone,
+      email: createDto.email,
+      address: createDto.shippingAddress,
+    });
 
     const initial = this.orderRepo.create({
+      customerId: customer.id,
       customerName: createDto.customerName,
       phone: createDto.phone,
       email: createDto.email,
       shippingAddress: createDto.shippingAddress,
       note: createDto.note,
-      totalAmount: createDto.totalAmount || totalAmountFromItems,
+      totalAmount: finalAmount,
       status: createDto.status ?? OrderStatusEnum.NEW,
       paymentMethod: createDto.paymentMethod,
       items: createDto.items?.map((i) =>
@@ -98,6 +154,7 @@ export class OrderService {
     });
 
     const saved = await this.orderRepo.save(initial);
+    await this.customerService.incrementStats(customer.id, finalAmount);
     this.telegramService.sendOrderNotification(saved);
 
     return this.findOne(saved.id);

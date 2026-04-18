@@ -5,8 +5,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
+  Index,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
+import { Customer } from './customer.entity';
 
 export enum OrderStatusEnum {
   NEW = 1,
@@ -26,6 +30,18 @@ export enum PaymentMethodEnum {
 export class Order {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Column({
+    type: 'int',
+    comment: 'FK tới customers.id',
+  })
+  customerId: number;
+
+  @ManyToOne(() => Customer, (customer) => customer.orders, {
+    createForeignKeyConstraints: false,
+  })
+  @JoinColumn({ name: 'customerId' })
+  customer?: Customer;
 
   @Column({
     type: 'varchar',

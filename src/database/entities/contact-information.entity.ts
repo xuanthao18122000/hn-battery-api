@@ -4,7 +4,11 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
 } from 'typeorm';
+import { Customer } from './customer.entity';
 
 export enum ContactStatusEnum {
   NEW = 'new',
@@ -17,6 +21,18 @@ export enum ContactStatusEnum {
 export class ContactInformation {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Column({
+    type: 'int',
+    comment: 'FK tới customers.id',
+  })
+  customerId: number;
+
+  @ManyToOne(() => Customer, {
+    createForeignKeyConstraints: false,
+  })
+  @JoinColumn({ name: 'customerId' })
+  customer?: Customer;
 
   @Column({
     type: 'varchar',
@@ -35,9 +51,10 @@ export class ContactInformation {
   @Column({
     type: 'varchar',
     length: 255,
+    nullable: true,
     comment: 'Email',
   })
-  email: string;
+  email?: string;
 
   @Column({
     type: 'text',

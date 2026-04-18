@@ -26,6 +26,7 @@ import { BrandModule } from './modules/brand/brand.module';
 import { VehicleModule } from './modules/vehicle/vehicle.module';
 import { BatteryCapacityModule } from './modules/battery-capacity/battery-capacity.module';
 import { OrderModule } from './modules/order/order.module';
+import { CustomerModule } from './modules/customer/customer.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 
 @Module({
@@ -54,6 +55,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
     VehicleModule,
     BatteryCapacityModule,
     OrderModule,
+    CustomerModule,
     TelegramModule,
   ],
   controllers: [AppController],

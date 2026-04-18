@@ -33,19 +33,21 @@ export class CreateContactInformationDto {
   @ApiProperty({
     example: 'nguyenvana@email.com',
     description: 'Email',
+    required: false,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsEmail()
   @MaxLength(255)
-  email: string;
+  email?: string;
 
   @ApiProperty({
     example: '123 Đường ABC, Quận XYZ, TP. HCM',
     description: 'Địa chỉ',
+    required: false,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  address: string;
+  address?: string;
 
   @ApiProperty({
     example: 123,

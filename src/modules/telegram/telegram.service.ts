@@ -3,6 +3,7 @@ import axios from 'axios';
 import { getEnv } from 'src/configs/env.config';
 import { Order } from 'src/database/entities/order.entity';
 import { PaymentMethodEnum } from 'src/database/entities/order.entity';
+import { ContactInformation } from 'src/database/entities/contact-information.entity';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 
@@ -40,6 +41,45 @@ export class TelegramService {
     this.sendMessage(text).catch(() => {
       // Bỏ qua lỗi để không ảnh hưởng response tạo đơn
     });
+  }
+
+  /**
+   * Gửi thông báo yêu cầu liên hệ / để lại thông tin đặt hàng từ FE.
+   */
+  sendContactNotification(contact: ContactInformation): void {
+    if (!this.isConfigured()) return;
+    const text = this.formatContactMessage(contact);
+    this.sendMessage(text).catch(() => {
+      // Bỏ qua lỗi để không ảnh hưởng response tạo contact
+    });
+  }
+
+  private formatContactMessage(contact: ContactInformation): string {
+    const createdAt = contact.createdAt
+      ? formatDateDDMMYYYY(new Date(contact.createdAt))
+      : formatDateDDMMYYYY(new Date());
+
+    const lines: string[] = [
+      '📝 <b>Yêu cầu liên hệ mới</b>',
+      '',
+      `<b>Mã:</b> #${contact.id}`,
+      `<b>Thời gian:</b> ${createdAt}`,
+      `<b>Khách hàng:</b> ${escapeHtml(contact.name)}`,
+      `<b>SĐT:</b> ${escapeHtml(contact.phone)}`,
+    ];
+    if (contact.email) {
+      lines.push(`<b>Email:</b> ${escapeHtml(contact.email)}`);
+    }
+    if (contact.address) {
+      lines.push(`<b>Địa chỉ:</b> ${escapeHtml(contact.address)}`);
+    }
+    if (contact.productId) {
+      lines.push(`<b>Sản phẩm ID:</b> ${contact.productId}`);
+    }
+    if (contact.notes) {
+      lines.push(`<b>Ghi chú:</b> ${escapeHtml(contact.notes)}`);
+    }
+    return lines.join('\n');
   }
 
   private formatOrderMessage(order: Order): string {

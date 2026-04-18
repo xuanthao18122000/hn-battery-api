@@ -24,6 +24,12 @@ export class OrderController {
     return this.orderService.findAll(query);
   }
 
+  @Get('stats')
+  @ApiOperation({ summary: 'Thống kê tổng hợp đơn hàng' })
+  async getStats() {
+    return this.orderService.getStats();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Chi tiết đơn hàng' })
   async findOne(@Param('id', ParseIntPipe) id: number) {

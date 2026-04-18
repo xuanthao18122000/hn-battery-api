@@ -9,12 +9,16 @@ import { ContactInformation } from 'src/database/entities/contact-information.en
 import { isValueDefinedAndChanged, paginatedResponse } from 'src/helpers';
 import { ErrorCode } from 'src/constants';
 import { ContactStatusEnum } from 'src/database/entities/contact-information.entity';
+import { TelegramService } from '../telegram/telegram.service';
+import { CustomerService } from '../customer/customer.service';
 
 @Injectable()
 export class ContactInformationService {
   constructor(
     @InjectRepository(ContactInformation)
     private readonly contactInfoRepo: Repository<ContactInformation>,
+    private readonly telegramService: TelegramService,
+    private readonly customerService: CustomerService,
   ) {}
 
   /**
@@ -25,10 +29,11 @@ export class ContactInformationService {
       .fCreateFilterBuilder('contact', query)
       .select([
         'contact.id',
+        'contact.customerId',
         'contact.name',
         'contact.phone',
         'contact.email',
-        'contact.message',
+        'contact.address',
         'contact.productId',
         'contact.status',
         'contact.notes',
@@ -77,12 +82,23 @@ export class ContactInformationService {
    * @description: Tạo thông tin liên hệ mới
    */
   async create(createDto: CreateContactInformationDto): Promise<ContactInformation> {
+    // Tìm hoặc tạo customer theo phone — vẫn giữ snapshot name/phone/... trên contact
+    const customer = await this.customerService.findOrCreateByPhone({
+      name: createDto.name,
+      phone: createDto.phone,
+      email: createDto.email,
+      address: createDto.address,
+    });
+
     const newContact = this.contactInfoRepo.create({
       ...createDto,
+      customerId: customer.id,
       status: createDto.status || ContactStatusEnum.NEW,
     });
 
-    return await this.contactInfoRepo.save(newContact);
+    const saved = await this.contactInfoRepo.save(newContact);
+    this.telegramService.sendContactNotification(saved);
+    return saved;
   }
 
   /**
